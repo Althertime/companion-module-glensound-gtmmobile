@@ -1,0 +1,20 @@
+{
+  "id": "glensound-gtmmobile",
+  "name": "GlenSound GTM Mobile",
+  "shortname": "GTM Mobile",
+  "description": "Control and feedback for GlenSound GTM Mobile intercom microphone units over Dante/UDP",
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "Przemek_Loud-Tec",
+  "keywords": ["glensound", "gtm", "dante", "intercom", "mute", "audio"],
+  "bugs": "https://github.com/Althertime/companion-module-glensound-gtmmobile/issues",
+  "repository": "git+https://github.com/Althertime/companion-module-glensound-gtmmobile.git",
+  "runtime": {
+    "type": "node18",
+    "api": "nodejs-ipc",
+    "entrypoint": "../src/main.js"
+  },
+  "manufacturer": "GlenSound",
+  "products": ["GTM Mobile"],
+  "type": "connection"
+}

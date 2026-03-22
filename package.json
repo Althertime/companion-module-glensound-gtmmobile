@@ -1,0 +1,17 @@
+{
+  "name": "companion-module-glensound-gtmmobile",
+  "version": "1.0.0",
+  "description": "GlenSound GTM Mobile - mute/unmute control via UDP",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "license": "MIT",
+  "keywords": ["companion", "glensound", "gtm", "mute", "udp"],
+  "dependencies": {
+    "@companion-module/base": "~1.8.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
