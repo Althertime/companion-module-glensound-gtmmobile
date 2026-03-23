@@ -16,6 +16,7 @@ Controls mute/unmute and internal mixer channel volumes via UDP, with real-time 
 - ✅ **Physical button support** — feedback reflects physical button presses on the device
 - ✅ **Multiple devices** — add one instance per device, each with its own IP
 - ✅ **Auto-detection of network interface** — no manual configuration needed in most setups
+- ✅ **Connection monitoring** — detects device going offline within 3 seconds
 
 ---
 
@@ -141,6 +142,7 @@ The GTM Mobile uses the **GlenSound UDP control protocol** on port `41161`.
 - **Commands** are sent as unicast UDP to the device IP on port `41161`
 - **Feedback** is received via multicast UDP on `239.254.50.123:6111` — the device broadcasts GlenSound Status packets there at ~10 Hz
 - The module polls `GetStatus` every 500ms to ensure physical button presses are reflected in Companion even without GlenSound Controller running
+- If no response is received from the device for 3 seconds, the connection status changes to **Connection Failure** and variables reset to `unknown`. Status recovers automatically when the device comes back online
 - Mute state is read directly from the Status packet (offset `0x81`: `0x00` = muted, `0x01` = unmuted)
 - Mixer channel volumes are read from Report type 8, requested when the volume generation counter changes in the Status packet
 

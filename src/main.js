@@ -177,6 +177,7 @@ class GlenSoundGTMMobile extends InstanceBase {
 					this.sendCmd(PKT_GET_REPORT_VOLUME)
 					// Poll GetStatus every 500ms so physical button presses are reflected
 					this.pollTimer = setInterval(() => this.sendCmd(PKT_GET_STATUS), 500)
+			this.resetTimeout()
 
 				} catch (err) {
 					this.log('error', `Multicast join failed: ${err.message}`)
@@ -191,6 +192,7 @@ class GlenSoundGTMMobile extends InstanceBase {
 
 	closeSockets() {
 		if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null }
+		if (this.noResponseTimer) { clearTimeout(this.noResponseTimer); this.noResponseTimer = null }
 		if (this.udpCmd) {
 			try { this.udpCmd.close() } catch (_) {}
 			this.udpCmd = null
@@ -219,6 +221,17 @@ class GlenSoundGTMMobile extends InstanceBase {
 	sendUnmute() { this.sendCmd(CMD_UNMUTE); this.log('debug', 'Sent UNMUTE') }
 	sendToggle() { this.muteState === false ? this.sendMute() : this.sendUnmute() }
 
+	// ── Connection timeout ──────────────────────────────────────────────────
+
+	resetTimeout() {
+		if (this.noResponseTimer) clearTimeout(this.noResponseTimer)
+		this.noResponseTimer = setTimeout(() => {
+			this.log('warn', 'No response from device — connection lost')
+			this.updateStatus(InstanceStatus.ConnectionFailure, 'No response')
+			this.setVariableValues({ mute_state: 'unknown' })
+		}, 5000)
+	}
+
 	// ── Parse Status multicast ────────────────────────────────────────────────
 
 	onStatusMessage(msg, rinfo) {
@@ -227,6 +240,8 @@ class GlenSoundGTMMobile extends InstanceBase {
 		if (rinfo.address !== this.config?.host) return
 		if (msg.length < 16 || !msg.slice(0, 8).equals(GS_MAGIC)) return
 
+		this.resetTimeout()
+		if (this.instanceStatus !== InstanceStatus.Ok) this.updateStatus(InstanceStatus.Ok)
 		const opcode = msg[10]
 
 		if (opcode === 1) {
