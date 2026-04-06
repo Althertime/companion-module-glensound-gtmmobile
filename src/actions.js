@@ -154,7 +154,7 @@ function UpdateActions(self) {
 			callback: async (action) => {
 				const ch = action.options.channel
 				const current = self.channelVolumes[ch]
-				const newVol = current === 100 ? 0 : 100
+				const newVol = (current === null || current === undefined) ? 100 : current === 100 ? 0 : 100
 				self.log('debug', `Action: TOGGLE VOLUME ch=${ch} ${current}% → ${newVol}%`)
 				self.sendCmd(buildChannelVolume(ch, newVol))
 			},

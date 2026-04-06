@@ -11,7 +11,6 @@ const dgram = require('dgram')
 const GS_MAGIC = Buffer.from('4753204374726c00', 'hex')
 const CONTROLLER_ID = Buffer.from([0x6c, 0x80, 0x7b, 0xa2])
 
-// Status multicast (from Wireshark: GlenSound Controller on Windows)
 const STATUS_MULTICAST_GROUP = '239.254.50.123'
 const STATUS_MULTICAST_PORT  = 6111
 
@@ -19,19 +18,18 @@ const STATUS_MULTICAST_PORT  = 6111
 // 0x01 = unmuted, 0x00 = muted
 const MUTE_OFFSET = 0x81
 
-// Channel volume report:
-// Device sends Report type=8 on multicast after GetReport
-// Channel volume at payload offset = knob + 45  (knob 1-13)
-// where payload starts at offset 16 (GS header) of the Report packet
-// Formula verified: knob 9 → offset 54 = 0x36, value 0=0%, 100=100%
+// Channel volume report type=8
+// Channels: knob 2-14, offset in packet = knob * 2 + 52
 const REPORT_TYPE_VOLUME = 8
-const CHANNEL_VOLUME_OFFSET = (knob) => knob * 2 + 52   // offset in full packet
-// Formula: param1 = knob+14, offset = param1*2+24 = knob*2+52
-// Verified: knob 2 → offset 56 (0x38), knob 9 → offset 70 (0x46)
+const CHANNEL_VOLUME_OFFSET = (knob) => knob * 2 + 52
 
-// Generation indices in Status packet (offset 20 = start of generations array)
-const GEN_MUTE_OFFSET   = 0x1a  // offset 26: mute/button state generation
-const GEN_VOLUME_OFFSET = 0x1c  // offset 28: mixer volume generation
+// Generation counters in Status packet
+const GEN_MUTE_OFFSET   = 0x1a
+const GEN_VOLUME_OFFSET = 0x1c
+
+// Channel range: knob 2-14 (channel 1/USB not controllable)
+const CHANNEL_MIN = 2
+const CHANNEL_MAX = 14
 
 function buildPacket(opcode, payload) {
 	const size = 16 + (payload ? payload.length : 0)
@@ -45,14 +43,9 @@ function buildPacket(opcode, payload) {
 	return b
 }
 
-// GetStatus — triggers Status response from device
 const PKT_GET_STATUS = buildPacket(2)
-
-// GetReport type=8 (mixer volume report)
 const PKT_GET_REPORT_VOLUME = buildPacket(11, Buffer.from([REPORT_TYPE_VOLUME, 0x00, 0x00, 0x00]))
 
-
-// Auto-detect which local network interface is in the same subnet as the device
 function findInterfaceForDevice(deviceIp) {
 	const os = require('os')
 	const deviceParts = deviceIp.split('.').map(Number)
@@ -73,13 +66,14 @@ function findInterfaceForDevice(deviceIp) {
 class GlenSoundGTMMobile extends InstanceBase {
 	constructor(internal) {
 		super(internal)
-		this.muteState      = null           // true=muted, false=unmuted, null=unknown
-		this.channelVolumes = new Array(14).fill(null)  // index 1-13, null=unknown
+		this.muteState      = null
+		this.channelVolumes = {}   // keyed by knob number 2-14
 		this.lastGenMute    = -1
 		this.lastGenVolume  = -1
 		this.udpCmd         = null
 		this.udpStatus      = null
 		this.pollTimer      = null
+		this.noResponseTimer = null
 	}
 
 	async init(config) {
@@ -97,11 +91,12 @@ class GlenSoundGTMMobile extends InstanceBase {
 
 	async configUpdated(config) {
 		this.config = config
-		this.closeSockets()
 		this.muteState = null
-		this.channelVolumes = new Array(14).fill(null)
+		this.channelVolumes = {}
 		this.lastGenMute = -1
 		this.lastGenVolume = -1
+		// C15: await socket close before restarting
+		await this.closeSockets()
 		this.start()
 	}
 
@@ -129,7 +124,7 @@ class GlenSoundGTMMobile extends InstanceBase {
 				label: 'Multicast interface IP (leave blank = auto)',
 				width: 6,
 				default: '',
-				tooltip: 'Leave blank for auto-detection (recommended). The module will automatically find the correct interface based on the device IP. Only set manually if auto-detection fails.',
+				tooltip: 'Leave blank for auto-detection. Only set manually if auto-detection fails.',
 			},
 		]
 	}
@@ -167,18 +162,15 @@ class GlenSoundGTMMobile extends InstanceBase {
 				const configured = this.config?.multicastInterface
 				const iface = configured || findInterfaceForDevice(this.config.host)
 				if (!configured && iface) this.log('info', `Auto-detected multicast interface: ${iface}`)
-				if (!configured && !iface) this.log('warn', 'Could not auto-detect multicast interface — trying without (may fail with multiple NICs)')
+				if (!configured && !iface) this.log('warn', 'Could not auto-detect multicast interface')
 				try {
 					this.udpStatus.addMembership(STATUS_MULTICAST_GROUP, iface)
 					this.log('info', `Joined status multicast ${STATUS_MULTICAST_GROUP}:${STATUS_MULTICAST_PORT}`)
 					this.updateStatus(InstanceStatus.Ok)
-					// Request initial state immediately
 					this.sendCmd(PKT_GET_STATUS)
 					this.sendCmd(PKT_GET_REPORT_VOLUME)
-					// Poll GetStatus every 500ms so physical button presses are reflected
 					this.pollTimer = setInterval(() => this.sendCmd(PKT_GET_STATUS), 500)
-			this.resetTimeout()
-
+					this.resetTimeout()
 				} catch (err) {
 					this.log('error', `Multicast join failed: ${err.message}`)
 					this.updateStatus(InstanceStatus.ConnectionFailure, err.message)
@@ -190,20 +182,29 @@ class GlenSoundGTMMobile extends InstanceBase {
 		}
 	}
 
+	// C15: closeSockets returns Promise for async safety
 	closeSockets() {
-		if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null }
-		if (this.noResponseTimer) { clearTimeout(this.noResponseTimer); this.noResponseTimer = null }
-		if (this.udpCmd) {
-			try { this.udpCmd.close() } catch (_) {}
-			this.udpCmd = null
-		}
-		if (this.udpStatus) {
-			try {
-				this.udpStatus.dropMembership(STATUS_MULTICAST_GROUP)
-				this.udpStatus.close()
-			} catch (_) {}
-			this.udpStatus = null
-		}
+		return new Promise((resolve) => {
+			if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null }
+			if (this.noResponseTimer) { clearTimeout(this.noResponseTimer); this.noResponseTimer = null }
+			let pending = 0
+			const done = () => { if (--pending === 0) resolve() }
+
+			if (this.udpCmd) {
+				pending++
+				try { this.udpCmd.close(done) } catch (_) { done() }
+				this.udpCmd = null
+			}
+			if (this.udpStatus) {
+				pending++
+				try {
+					this.udpStatus.dropMembership(STATUS_MULTICAST_GROUP)
+					this.udpStatus.close(done)
+				} catch (_) { done() }
+				this.udpStatus = null
+			}
+			if (pending === 0) resolve()
+		})
 	}
 
 	// ── Send ──────────────────────────────────────────────────────────────────
@@ -213,29 +214,47 @@ class GlenSoundGTMMobile extends InstanceBase {
 		const port = parseInt(this.config?.port) || 41161
 		if (!host || !this.udpCmd) return
 		this.udpCmd.send(pkt, 0, pkt.length, port, host, (err) => {
-			if (err) this.log('error', `Send error: ${err.message}`)
+			if (err) {
+				// C14: update status on send failure
+				this.log('error', `Send error: ${err.message}`)
+				this.updateStatus(InstanceStatus.ConnectionFailure, err.message)
+			}
 		})
 	}
 
 	sendMute()   { this.sendCmd(CMD_MUTE);   this.log('debug', 'Sent MUTE') }
 	sendUnmute() { this.sendCmd(CMD_UNMUTE); this.log('debug', 'Sent UNMUTE') }
-	sendToggle() { this.muteState === false ? this.sendMute() : this.sendUnmute() }
 
-	// ── Connection timeout ──────────────────────────────────────────────────
+	// M4: toggle does nothing when state unknown
+	sendToggle() {
+		if (this.muteState === null) {
+			this.log('warn', 'Toggle ignored — mute state unknown, waiting for device response')
+			return
+		}
+		this.muteState ? this.sendUnmute() : this.sendMute()
+	}
+
+	// ── Connection timeout ────────────────────────────────────────────────────
 
 	resetTimeout() {
 		if (this.noResponseTimer) clearTimeout(this.noResponseTimer)
 		this.noResponseTimer = setTimeout(() => {
 			this.log('warn', 'No response from device — connection lost')
 			this.updateStatus(InstanceStatus.ConnectionFailure, 'No response')
-			this.setVariableValues({ mute_state: 'unknown' })
-		}, 5000)
+			this.muteState = null
+			this.channelVolumes = {}
+			const vars = { mute_state: 'unknown' }
+			for (let k = CHANNEL_MIN; k <= CHANNEL_MAX; k++) {
+				vars[`channel_${k}_volume`] = 'unknown'
+			}
+			this.setVariableValues(vars)
+			this.checkFeedbacks('mute_state', 'channel_volume')
+		}, 3000)
 	}
 
 	// ── Parse Status multicast ────────────────────────────────────────────────
 
 	onStatusMessage(msg, rinfo) {
-		// GTM Mobile sends Status multicast from port 41162
 		if (rinfo.port !== 41162) return
 		if (rinfo.address !== this.config?.host) return
 		if (msg.length < 16 || !msg.slice(0, 8).equals(GS_MAGIC)) return
@@ -254,9 +273,8 @@ class GlenSoundGTMMobile extends InstanceBase {
 	onStatus(msg) {
 		if (msg.length <= MUTE_OFFSET) return
 
-		// ── Mute state ──
 		const muteVal = msg[MUTE_OFFSET]
-		const newMute = muteVal === 0x00  // 0=muted, 1=unmuted
+		const newMute = muteVal === 0x00
 		if (newMute !== this.muteState) {
 			this.muteState = newMute
 			this.log('info', `Mute → ${newMute ? 'MUTED' : 'UNMUTED'}`)
@@ -264,7 +282,6 @@ class GlenSoundGTMMobile extends InstanceBase {
 			this.checkFeedbacks('mute_state')
 		}
 
-		// ── Volume generation — request report when it changes ──
 		if (msg.length > GEN_VOLUME_OFFSET) {
 			const genVol = msg[GEN_VOLUME_OFFSET]
 			if (genVol !== this.lastGenVolume) {
@@ -282,13 +299,12 @@ class GlenSoundGTMMobile extends InstanceBase {
 
 		this.log('debug', `Volume report received, len=${msg.length}`)
 
-		// Read volume for each channel (knob 1-13)
-		// offset in packet = knob + 61 = 16(GS header) + knob + 45
+		// C13: consistent channel range 2-14, stored by knob number
 		let changed = false
-		for (let knob = 2; knob <= 14; knob++) {
+		for (let knob = CHANNEL_MIN; knob <= CHANNEL_MAX; knob++) {
 			const offset = CHANNEL_VOLUME_OFFSET(knob)
 			if (offset >= msg.length) continue
-			const vol = msg[offset]  // 0 or 100
+			const vol = msg[offset]
 			if (vol !== this.channelVolumes[knob]) {
 				this.channelVolumes[knob] = vol
 				this.log('debug', `Channel ${knob} volume = ${vol}%`)
@@ -297,10 +313,10 @@ class GlenSoundGTMMobile extends InstanceBase {
 		}
 
 		if (changed) {
-			// Update variables
+			// C13: update variables for same range 2-14
 			const vars = {}
-			for (let k = 1; k <= 13; k++) {
-				vars[`channel_${k}_volume`] = this.channelVolumes[k] !== null
+			for (let k = CHANNEL_MIN; k <= CHANNEL_MAX; k++) {
+				vars[`channel_${k}_volume`] = this.channelVolumes[k] !== undefined
 					? `${this.channelVolumes[k]}%`
 					: 'unknown'
 			}

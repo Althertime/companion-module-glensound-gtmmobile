@@ -1,22 +1,23 @@
 {
+  "$schema": "../node_modules/@companion-module/base/assets/manifest.schema.json",
   "id": "glensound-gtmmobile",
-  "name": "GlenSound GTM Mobile",
+  "name": "glensound-gtmmobile",
   "shortname": "GTM Mobile",
   "description": "Control and feedback for GlenSound GTM Mobile intercom microphone units over Dante/UDP",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "license": "MIT",
-  "repository": "git+https://github.com/Althertime/companion-module-glensound-gtmmobile.git",
-  "bugs": "https://github.com/Althertime/companion-module-glensound-gtmmobile/issues",
-  "maintainers": [{"name": "Przemysław Matusiak"}],
+  "repository": "git+https://github.com/bitfocus/companion-module-glensound-gtmmobile.git",
+  "bugs": "https://github.com/bitfocus/companion-module-glensound-gtmmobile/issues",
+  "maintainers": [{"name": "Przemysław Matusiak", "email": "biuro.loudtec@gmail.com"}],
   "legacyIds": [],
   "runtime": {
-    "type": "node18",
+    "type": "node22",
     "api": "nodejs-ipc",
-    "apiVersion": "1.12.1",
+    "apiVersion": "1.14.1",
     "entrypoint": "../src/main.js"
   },
   "manufacturer": "GlenSound",
   "products": ["GTM Mobile"],
-  "keywords": ["glensound", "gtm", "dante", "intercom", "mute", "audio"],
+  "keywords": ["gtm", "intercom", "mute", "audio"],
   "isPrerelease": false
 }

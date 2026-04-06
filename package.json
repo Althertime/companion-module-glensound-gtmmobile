@@ -4,14 +4,26 @@
   "description": "GlenSound GTM Mobile - mute/unmute control via UDP",
   "main": "src/main.js",
   "scripts": {
-    "start": "node src/main.js"
+    "format": "prettier -w .",
+    "package": "companion-module-build"
   },
   "license": "MIT",
-  "keywords": ["companion", "glensound", "gtm", "mute", "udp"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bitfocus/companion-module-glensound-gtmmobile.git"
+  },
+  "bugs": "https://github.com/bitfocus/companion-module-glensound-gtmmobile/issues",
   "dependencies": {
-    "@companion-module/base": "~1.8.0"
+    "@companion-module/base": "~1.14.1"
+  },
+  "devDependencies": {
+    "@companion-module/tools": "^2.6.1",
+    "prettier": "^3.7.4"
   },
   "engines": {
-    "node": ">=18.0.0"
-  }
+    "node": "^22.20",
+    "yarn": "^4"
+  },
+  "packageManager": "yarn@4.9.1",
+  "prettier": "@companion-module/tools/.prettierrc.json"
 }
