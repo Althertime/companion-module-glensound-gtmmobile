@@ -52,7 +52,7 @@ function UpdateActions(self) {
 		mute: {
 			name: 'Mute microphone',
 			options: [],
-			callback: async (_action) => {
+			callback: (_action) => {
 				self.log('debug', 'Action: MUTE')
 				self.sendCmd(CMD_MUTE)
 			},
@@ -61,7 +61,7 @@ function UpdateActions(self) {
 		unmute: {
 			name: 'Unmute microphone',
 			options: [],
-			callback: async (_action) => {
+			callback: (_action) => {
 				self.log('debug', 'Action: UNMUTE')
 				self.sendCmd(CMD_UNMUTE)
 			},
@@ -70,7 +70,7 @@ function UpdateActions(self) {
 		toggle: {
 			name: 'Toggle mute',
 			options: [],
-			callback: async (_action) => {
+			callback: (_action) => {
 				self.log('debug', `Action: TOGGLE (state: ${self.muteState})`)
 				self.sendToggle()
 			},
@@ -89,7 +89,7 @@ function UpdateActions(self) {
 					choices: CHANNEL_CHOICES,
 				},
 			],
-			callback: async (action) => {
+			callback: (action) => {
 				const ch = action.options.channel
 				self.log('debug', `Action: CHANNEL ${ch} → 100%`)
 				self.sendCmd(buildChannelVolume(ch, 100))
@@ -107,7 +107,7 @@ function UpdateActions(self) {
 					choices: CHANNEL_CHOICES,
 				},
 			],
-			callback: async (action) => {
+			callback: (action) => {
 				const ch = action.options.channel
 				self.log('debug', `Action: CHANNEL ${ch} → 0%`)
 				self.sendCmd(buildChannelVolume(ch, 0))
@@ -133,7 +133,7 @@ function UpdateActions(self) {
 					default: 100,
 				},
 			],
-			callback: async (action) => {
+			callback: (action) => {
 				const { channel, volume } = action.options
 				self.log('debug', `Action: CHANNEL ${channel} → ${volume}%`)
 				self.sendCmd(buildChannelVolume(channel, volume))
@@ -151,7 +151,7 @@ function UpdateActions(self) {
 					choices: CHANNEL_CHOICES,
 				},
 			],
-			callback: async (action) => {
+			callback: (action) => {
 				const ch = action.options.channel
 				const current = self.channelVolumes[ch]
 				const newVol = (current === null || current === undefined) ? 100 : current === 100 ? 0 : 100

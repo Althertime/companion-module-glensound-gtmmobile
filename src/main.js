@@ -74,6 +74,7 @@ class GlenSoundGTMMobile extends InstanceBase {
 		this.udpStatus      = null
 		this.pollTimer      = null
 		this.noResponseTimer = null
+		this.membershipAdded = false
 	}
 
 	async init(config) {
@@ -155,16 +156,21 @@ class GlenSoundGTMMobile extends InstanceBase {
 		// Status multicast socket
 		try {
 			this.udpStatus = dgram.createSocket({ type: 'udp4', reuseAddr: true })
-			this.udpStatus.on('error', (err) => this.log('error', `Status socket: ${err.message}`))
+			this.udpStatus.on('error', (err) => {
+			this.log('error', `Status socket: ${err.message}`)
+			this.updateStatus(InstanceStatus.ConnectionFailure, err.message)
+		})
 			this.udpStatus.on('message', (msg, rinfo) => this.onStatusMessage(msg, rinfo))
 
 			this.udpStatus.bind(STATUS_MULTICAST_PORT, STATUS_MULTICAST_GROUP, () => {
+				if (!this.udpStatus) return
 				const configured = this.config?.multicastInterface
 				const iface = configured || findInterfaceForDevice(this.config.host)
 				if (!configured && iface) this.log('info', `Auto-detected multicast interface: ${iface}`)
 				if (!configured && !iface) this.log('warn', 'Could not auto-detect multicast interface')
 				try {
 					this.udpStatus.addMembership(STATUS_MULTICAST_GROUP, iface)
+					this.membershipAdded = true
 					this.log('info', `Joined status multicast ${STATUS_MULTICAST_GROUP}:${STATUS_MULTICAST_PORT}`)
 					this.updateStatus(InstanceStatus.Ok)
 					this.sendCmd(PKT_GET_STATUS)
@@ -186,7 +192,8 @@ class GlenSoundGTMMobile extends InstanceBase {
 	closeSockets() {
 		return new Promise((resolve) => {
 			if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null }
-			if (this.noResponseTimer) { clearTimeout(this.noResponseTimer); this.noResponseTimer = null }
+			if (this.noResponseTimer) { clearTimeout(this.noResponseTimer); this.noResponseTimer = null
+		this.membershipAdded = false }
 			let pending = 0
 			const done = () => { if (--pending === 0) resolve() }
 
@@ -198,7 +205,7 @@ class GlenSoundGTMMobile extends InstanceBase {
 			if (this.udpStatus) {
 				pending++
 				try {
-					this.udpStatus.dropMembership(STATUS_MULTICAST_GROUP)
+					if (this.membershipAdded) { this.udpStatus.dropMembership(STATUS_MULTICAST_GROUP); this.membershipAdded = false }
 					this.udpStatus.close(done)
 				} catch (_) { done() }
 				this.udpStatus = null

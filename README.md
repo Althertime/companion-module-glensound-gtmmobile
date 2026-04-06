@@ -33,7 +33,7 @@ Controls mute/unmute and internal mixer channel volumes via UDP, with real-time 
 ### Developer mode (local)
 
 1. Clone or download this repository into your Companion developer modules folder
-2. Run `npm install` in the module folder
+2. Run `yarn` in the module folder
 3. In Companion: **Settings → Developer module path** → point to the parent folder
 4. Add a new connection → search for **GlenSound GTM Mobile**
 
